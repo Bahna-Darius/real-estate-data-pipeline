@@ -1,0 +1,15 @@
+import os
+
+
+BASE_URL = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
+NUM_PAGES_TO_SCRAPE = 6
+
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
