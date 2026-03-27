@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import requests
 import re
+import os
 
 
 def test_scraper():
@@ -71,8 +72,8 @@ def test_scraper():
 
             # Transform list data in DF:
             df = pd.DataFrame(scraped_data)
-            csv_filename = "storia_raw_data.csv"
-            json_filename = "storia_raw_data.json"
+            csv_filename = "../data/raw/storia_raw_data.csv"
+            json_filename = "../data/raw/storia_raw_data.json"
 
             df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
             df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
