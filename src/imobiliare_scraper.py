@@ -1,88 +1,141 @@
 from bs4 import BeautifulSoup
 import pandas as pd
 import requests
+import random
+import time
 import re
+import os
 
 
 def test_scraper():
-    url = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
+    base_url = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    print(f"[*] Attempting to access: {url}")
+    # 1. Initialize the data storage outside the page loop
+    # We want to collect data from all pages into the same list.
+    scraped_data = []
 
-    response = requests.get(
-        url, headers=headers
-    )
-    print(f"[*] Status Code: {response.status_code}\n")
+    # Set the number of pages to extract (testing with 3 pages initially)
+    num_pages = 3
 
-    if response.status_code == 200:
-        print("[+] Success! Connected to the website.")
-        soup = BeautifulSoup(response.text, 'html.parser')
+    print(f"[*] Starting scraper for {num_pages} pages...")
 
-        listings = soup.find_all("article")
-        print(f"[*] Found {len(listings)} listings on this page!")
+    # 2. Main loop iterating through pages
+    for page in range(1, num_pages + 1):
 
-        if len(listings) > 0:
-            print("\n--- Extracting ALL Prices ---")
+        # Build the dynamic link for the current page
+        url = f"{base_url}?page={page}"
+        print(f"\n[*] Scraping Page {page}: {url}")
 
-            scraped_data = []
+        response = requests.get(url, headers=headers)
 
-            for index, listing in enumerate(listings, start=1):
-                # Extract Price
-                price_element = listing.find(string=re.compile("€"))
-                price = price_element.parent.get_text(strip=True).replace('\xa0', '') if price_element else "N/A"
-                # Extract Area
-                area = "N/A"
-                m2_elements = listing.find_all(string=re.compile("m²"))
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            listings = soup.find_all("article")
+            print(f"[+] Found {len(listings)} listings on page {page}.")
 
-                for el in m2_elements:
-                    if "€" not in el:
-                        area = el.parent.get_text(strip=True)
-                        break
+            if len(listings) > 0:
+                # Inner loop to extract data from each apartment listing
+                for listing in listings:
+                    # Extract Price
+                    price_element = listing.find(string=re.compile("€"))
+                    price = price_element.parent.get_text(strip=True).replace('\xa0', ' ') if price_element else "N/A"
 
+                    # Extract Area
+                    area = "N/A"
+                    m2_elements = listing.find_all(string=re.compile("m²"))
+                    for el in m2_elements:
+                        if "€" not in el:
+                            area = el.parent.get_text(strip=True)
+                            break
 
-                # Extract the Title and Link
-                title = "N/A"
-                ad_url = "N/A"
-                all_links = listing.find_all("a", href=True)
+                    # Extract Title and Link
+                    title = "N/A"
+                    ad_url = "N/A"
+                    all_links = listing.find_all("a", href=True)
 
-                for link in all_links:
-                    href_value = link.get('href')
-                    text_inside_link = link.get_text(strip=True)
+                    for link in all_links:
+                        href_value = link.get('href')
+                        text_inside_link = link.get_text(strip=True)
 
-                    if href_value and text_inside_link:
-                        title = text_inside_link
-                        ad_url = href_value
+                        if href_value and text_inside_link:
+                            title = text_inside_link
+                            ad_url = href_value
+                            if ad_url is not None and ad_url.startswith("/"):
+                                ad_url = "https://www.storia.ro" + ad_url
+                            break
 
-                        if ad_url is not None and ad_url.startswith("/"):
-                            ad_url = "https://www.storia.ro" + ad_url
-                        break
+                    # Append data to the main list
+                    listing_dict = {
+                        "Title": title,
+                        "Price": price,
+                        "Area": area,
+                        "Link": ad_url
+                    }
+                    scraped_data.append(listing_dict)
+            else:
+                print("[-] No listings found on this page. Structure might have changed or page is empty.")
 
-                listing_dict = {
-                    "Title": title,
-                    "Price": price,
-                    "Area": area,
-                    "Link": ad_url
-                }
-                scraped_data.append(listing_dict)
+        else:
+            print(f"[-] Error accessing page {page}. Status code: {response.status_code}")
+            break  # Stop extraction if an error occurs (e.g., being blocked)
 
-            # Transform list data in DF:
-            df = pd.DataFrame(scraped_data)
-            csv_filename = "storia_raw_data.csv"
-            json_filename = "storia_raw_data.json"
+        # 3. HUMAN-LIKE PAUSE (MANDATORY) 🛌
+        # Pause the script for 2 to 4 seconds before requesting the next page
+        sleep_time = random.uniform(2.0, 4.0)
+        print(f"[*] Sleeping for {sleep_time:.2f} seconds to be polite...")
+        time.sleep(sleep_time)
 
-            df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-            df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+    # --- DATA SAVING SECTION (Executes after all pages are processed) ---
+    if len(scraped_data) > 0:
+        print("\n--- Saving All Data ---")
+        df = pd.DataFrame(scraped_data)
 
-            print(f"\n[+] Successfully saved {len(df)} records to {csv_filename} and {json_filename}!")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        output_dir = os.path.join(project_root, "data", "raw")
+        os.makedirs(output_dir, exist_ok=True)
 
+        # Construct full file paths
+        csv_filename = os.path.join(output_dir, "storia_raw_data.csv")
+        json_filename = os.path.join(output_dir, "storia_raw_data.json")
+
+        # 1. Create a DataFrame for the newly scraped data
+        new_df = pd.DataFrame(scraped_data)
+
+        # 2. Check for existing local storage to perform an incremental update
+        if os.path.exists(csv_filename):
+            print(f"\n[*] Existing database found! Performing Incremental Load...")
+
+            # Read existing historical data
+            existing_df = pd.read_csv(csv_filename)
+
+            # Concatenate new data with existing data
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+            # REMOVE DUPLICATES: Using 'Link' as the unique identifier.
+            # keep='last' ensures we retain the most recent price/info if a listing is updated.
+            final_df = combined_df.drop_duplicates(subset=['Link'], keep='last')
+
+            # Calculate the number of unique new listings added
+            new_listings_count = len(final_df) - len(existing_df)
+            print(f"[+] Added {new_listings_count} NEW unique listings to the database.")
+
+        else:
+            print(f"\n[*] No existing database found. Initializing first full load...")
+            final_df = new_df
+
+        # 3. Save the finalized deduplicated dataset
+        final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+        final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+
+        print(f"[+] Success! Database now contains {len(final_df)} total records.")
 
     else:
-        print("[-] Still 0 listings. We might need to inspect the page structure further.")
-
+        print("[-] No data was collected during this session.")
 
 
 if __name__ == "__main__":
