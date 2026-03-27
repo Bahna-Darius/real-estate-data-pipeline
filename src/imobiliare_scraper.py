@@ -99,15 +99,43 @@ def test_scraper():
         output_dir = os.path.join(project_root, "data", "raw")
         os.makedirs(output_dir, exist_ok=True)
 
+        # Construct full file paths
         csv_filename = os.path.join(output_dir, "storia_raw_data.csv")
         json_filename = os.path.join(output_dir, "storia_raw_data.json")
 
-        df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-        df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+        # 1. Create a DataFrame for the newly scraped data
+        new_df = pd.DataFrame(scraped_data)
 
-        print(f"[+] Successfully saved {len(df)} total records to data/raw/")
+        # 2. Check for existing local storage to perform an incremental update
+        if os.path.exists(csv_filename):
+            print(f"\n[*] Existing database found! Performing Incremental Load...")
+
+            # Read existing historical data
+            existing_df = pd.read_csv(csv_filename)
+
+            # Concatenate new data with existing data
+            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+            # REMOVE DUPLICATES: Using 'Link' as the unique identifier.
+            # keep='last' ensures we retain the most recent price/info if a listing is updated.
+            final_df = combined_df.drop_duplicates(subset=['Link'], keep='last')
+
+            # Calculate the number of unique new listings added
+            new_listings_count = len(final_df) - len(existing_df)
+            print(f"[+] Added {new_listings_count} NEW unique listings to the database.")
+
+        else:
+            print(f"\n[*] No existing database found. Initializing first full load...")
+            final_df = new_df
+
+        # 3. Save the finalized deduplicated dataset
+        final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+        final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+
+        print(f"[+] Success! Database now contains {len(final_df)} total records.")
+
     else:
-        print("[-] No data was scraped.")
+        print("[-] No data was collected during this session.")
 
 
 if __name__ == "__main__":
