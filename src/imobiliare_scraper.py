@@ -1,142 +1,184 @@
+from config import BASE_URL, HEADERS, NUM_PAGES_TO_SCRAPE, RAW_DATA_DIR
 from bs4 import BeautifulSoup
+from typing import List, Dict, Optional
 import pandas as pd
 import requests
 import random
+import logging
 import time
-import re
 import os
+import re
 
 
-def test_scraper():
-    base_url = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+logger = logging.getLogger(__name__)
+
+
+def get_soup(url: str, headers: Dict[str, str]) -> Optional[BeautifulSoup]:
+    """
+    Sends a GET request to the specified URL and returns a BeautifulSoup object.
+    If the request fails, it handles the error gracefully and returns None.
+
+    Args:
+        url (str): The target URL to scrape.
+        headers (Dict[str, str]): The HTTP headers to pass with the request.
+
+    Returns:
+        Optional[BeautifulSoup]: The parsed HTML content, or None if the request failed.
+    """
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, 'html.parser')
+    except requests.exceptions.RequestException as e:
+        logging.error(f"[-] Request failed for {url}: {e}")
+        return None
+
+
+def parse_listing(listing: BeautifulSoup) -> Dict[str, str]:
+    """
+    Extracts the title, price, area, and URL link from a single listing HTML element.
+
+    Args:
+        listing (BeautifulSoup): A single HTML <article> element representing a listing.
+
+    Returns:
+        Dict[str, str]: A dictionary containing the extracted data.
+    """
+    # Extract Price
+    price_element = listing.find(string=re.compile("€"))
+    price = price_element.parent.get_text(strip=True).replace('\xa0', ' ') if price_element else "N/A"
+
+    # Extract Area
+    area = "N/A"
+    m2_elements = listing.find_all(string=re.compile("m²"))
+    for el in m2_elements:
+        if "€" not in el:
+            area = el.parent.get_text(strip=True)
+            break
+
+    # Extract Title and Link
+    title = "N/A"
+    ad_url = "N/A"
+    all_links = listing.find_all("a", href=True)
+
+    for link in all_links:
+        href_value = link.get('href')
+        text_inside_link = link.get_text(strip=True)
+
+        if href_value and text_inside_link:
+            title = text_inside_link
+            ad_url = href_value
+            if ad_url and ad_url.startswith("/"):
+                ad_url = "https://www.storia.ro" + ad_url
+            break
+
+    return {
+        "Title": title,
+        "Price": price,
+        "Area": area,
+        "Link": ad_url
     }
 
-    # 1. Initialize the data storage outside the page loop
-    # We want to collect data from all pages into the same list.
-    scraped_data = []
 
-    # Set the number of pages to extract (testing with 3 pages initially)
-    num_pages = 3
+def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
+    """
+    Saves the scraped data to CSV and JSON formats using an incremental load (upsert) approach
+    to prevent duplicate entries based on the listing's URL.
 
-    print(f"[*] Starting scraper for {num_pages} pages...")
+    Args:
+        scraped_data (List[Dict[str, str]]): The fresh data extracted during this run.
+        output_dir (str): The directory where the raw data files should be stored.
+    """
+    if not scraped_data:
+        logging.info("[-] No data to save.")
+        return
 
-    # 2. Main loop iterating through pages
-    for page in range(1, num_pages + 1):
+    os.makedirs(output_dir, exist_ok=True)
+    csv_filename = os.path.join(output_dir, "storia_raw_data.csv")
+    json_filename = os.path.join(output_dir, "storia_raw_data.json")
 
-        # Build the dynamic link for the current page
-        url = f"{base_url}?page={page}"
-        print(f"\n[*] Scraping Page {page}: {url}")
+    new_df = pd.DataFrame(scraped_data)
 
-        response = requests.get(url, headers=headers)
+    if os.path.exists(csv_filename):
+        logging.info(f"[*] Existing database found! Performing Incremental Load...")
+        existing_df = pd.read_csv(csv_filename)
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+        # Upsert logic: keep the latest version of the listing based on the unique Link
+        final_df = combined_df.drop_duplicates(subset=['Link'], keep='last')
 
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            listings = soup.find_all("article")
-            print(f"[+] Found {len(listings)} listings on page {page}.")
+        new_listings_count = len(final_df) - len(existing_df)
 
-            if len(listings) > 0:
-                # Inner loop to extract data from each apartment listing
-                for listing in listings:
-                    # Extract Price
-                    price_element = listing.find(string=re.compile("€"))
-                    price = price_element.parent.get_text(strip=True).replace('\xa0', ' ') if price_element else "N/A"
-
-                    # Extract Area
-                    area = "N/A"
-                    m2_elements = listing.find_all(string=re.compile("m²"))
-                    for el in m2_elements:
-                        if "€" not in el:
-                            area = el.parent.get_text(strip=True)
-                            break
-
-                    # Extract Title and Link
-                    title = "N/A"
-                    ad_url = "N/A"
-                    all_links = listing.find_all("a", href=True)
-
-                    for link in all_links:
-                        href_value = link.get('href')
-                        text_inside_link = link.get_text(strip=True)
-
-                        if href_value and text_inside_link:
-                            title = text_inside_link
-                            ad_url = href_value
-                            if ad_url is not None and ad_url.startswith("/"):
-                                ad_url = "https://www.storia.ro" + ad_url
-                            break
-
-                    # Append data to the main list
-                    listing_dict = {
-                        "Title": title,
-                        "Price": price,
-                        "Area": area,
-                        "Link": ad_url
-                    }
-                    scraped_data.append(listing_dict)
-            else:
-                print("[-] No listings found on this page. Structure might have changed or page is empty.")
-
+        if new_listings_count > 0:
+            logging.info(f"[+] Added {new_listings_count} NEW listings to the database.")
         else:
-            print(f"[-] Error accessing page {page}. Status code: {response.status_code}")
-            break  # Stop extraction if an error occurs (e.g., being blocked)
+            logging.info("[*] Run complete. No new unique listings found.")
 
-        # 3. HUMAN-LIKE PAUSE (MANDATORY) 🛌
-        # Pause the script for 2 to 4 seconds before requesting the next page
-        sleep_time = random.uniform(2.0, 4.0)
-        print(f"[*] Sleeping for {sleep_time:.2f} seconds to be polite...")
-        time.sleep(sleep_time)
+    else:
+        logging.info(f"[*] No existing database found. Creating first full load...")
+        final_df = new_df
 
-    # --- DATA SAVING SECTION (Executes after all pages are processed) ---
-    if len(scraped_data) > 0:
-        print("\n--- Saving All Data ---")
-        df = pd.DataFrame(scraped_data)
+    final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+    final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+    logging.info(f"[+] Success! Database now contains {len(final_df)} total records.")
 
+
+def main() -> None:
+    """
+    The main orchestrator function. It handles pagination, coordinates the extraction
+    functions, applies polite delays, and saves the final output.
+    """
+    scraped_data: List[Dict[str, str]] = []
+    num_pages = NUM_PAGES_TO_SCRAPE
+
+    logging.info(f"[*] Starting scraper for {num_pages} pages...")
+
+    for page in range(1, num_pages + 1):
+        url = f"{BASE_URL}?page={page}"
+
+        logging.info(f"[*] Scraping Page {page}: {url}")
+
+        # 1. Fetch HTML
+        soup = get_soup(url, HEADERS)
+        if not soup:
+            logging.error(f"[-] Skipping page {page} due to fetch error.")
+            continue
+
+        listings = soup.find_all("article")
+        logging.info(f"[+] Found {len(listings)} listings on page {page}.")
+
+        if not listings:
+            logging.warning("[-] No listings found on this page. Stopping pagination.")
+            break
+
+        # 2. Extract Data
+        for listing in listings:
+            listing_dict = parse_listing(listing)
+            scraped_data.append(listing_dict)
+
+        # 3. Polite Delay
+        if page < num_pages:
+            sleep_time = random.uniform(2.0, 4.0)
+            logging.info(f"[*] Sleeping for {sleep_time:.2f} seconds to be polite...")
+            time.sleep(sleep_time)
+
+    # 4. Save Data
+    if scraped_data:
+        logging.info("--- Saving All Data ---")
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)
         output_dir = os.path.join(project_root, "data", "raw")
-        os.makedirs(output_dir, exist_ok=True)
 
-        # Construct full file paths
-        csv_filename = os.path.join(output_dir, "storia_raw_data.csv")
-        json_filename = os.path.join(output_dir, "storia_raw_data.json")
-
-        # 1. Create a DataFrame for the newly scraped data
-        new_df = pd.DataFrame(scraped_data)
-
-        # 2. Check for existing local storage to perform an incremental update
-        if os.path.exists(csv_filename):
-            print(f"\n[*] Existing database found! Performing Incremental Load...")
-
-            # Read existing historical data
-            existing_df = pd.read_csv(csv_filename)
-
-            # Concatenate new data with existing data
-            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-
-            # REMOVE DUPLICATES: Using 'Link' as the unique identifier.
-            # keep='last' ensures we retain the most recent price/info if a listing is updated.
-            final_df = combined_df.drop_duplicates(subset=['Link'], keep='last')
-
-            # Calculate the number of unique new listings added
-            new_listings_count = len(final_df) - len(existing_df)
-            print(f"[+] Added {new_listings_count} NEW unique listings to the database.")
-
-        else:
-            print(f"\n[*] No existing database found. Initializing first full load...")
-            final_df = new_df
-
-        # 3. Save the finalized deduplicated dataset
-        final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-        final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
-
-        print(f"[+] Success! Database now contains {len(final_df)} total records.")
-
+        save_data(scraped_data, output_dir)
     else:
-        print("[-] No data was collected during this session.")
+        logging.warning("[-] No data was scraped at all.")
 
 
 if __name__ == "__main__":
-    test_scraper()
+    main()
