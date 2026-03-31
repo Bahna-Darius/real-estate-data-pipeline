@@ -1,4 +1,7 @@
-from config import BASE_URL, HEADERS, NUM_PAGES_TO_SCRAPE, RAW_DATA_DIR
+from config import (
+    BASE_URL, HEADERS, NUM_PAGES_TO_SCRAPE, RAW_DATA_DIR,
+    RAW_CSV_PATH, RAW_JSON_PATH
+)
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import pandas as pd
@@ -101,8 +104,8 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
         return
 
     os.makedirs(output_dir, exist_ok=True)
-    csv_filename = os.path.join(output_dir, "storia_raw_data.csv")
-    json_filename = os.path.join(output_dir, "storia_raw_data.json")
+    csv_filename = RAW_CSV_PATH
+    json_filename = RAW_JSON_PATH
 
     new_df = pd.DataFrame(scraped_data)
 
@@ -171,11 +174,7 @@ def main() -> None:
     # 4. Save Data
     if scraped_data:
         logging.info("--- Saving All Data ---")
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        output_dir = os.path.join(project_root, "data", "raw")
-
-        save_data(scraped_data, output_dir)
+        save_data(scraped_data, RAW_DATA_DIR)
     else:
         logging.warning("[-] No data was scraped at all.")
 

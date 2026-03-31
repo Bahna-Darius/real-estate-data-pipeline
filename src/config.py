@@ -13,3 +13,9 @@ HEADERS = {
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
+PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
+
+
+RAW_CSV_PATH = os.path.join(RAW_DATA_DIR, "storia_raw_data.csv")
+RAW_JSON_PATH = os.path.join(RAW_DATA_DIR, "storia_raw_data.json")
+PROCESSED_CSV_PATH = os.path.join(PROCESSED_DATA_DIR, "storia_clean_data.csv")
