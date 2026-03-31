@@ -2,7 +2,7 @@ import os
 
 
 BASE_URL = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
-NUM_PAGES_TO_SCRAPE = 6
+NUM_PAGES_TO_SCRAPE = 50
 
 
 HEADERS = {
@@ -19,3 +19,7 @@ PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
 RAW_CSV_PATH = os.path.join(RAW_DATA_DIR, "storia_raw_data.csv")
 RAW_JSON_PATH = os.path.join(RAW_DATA_DIR, "storia_raw_data.json")
 PROCESSED_CSV_PATH = os.path.join(PROCESSED_DATA_DIR, "storia_clean_data.csv")
+
+# Azure
+AZURE_CONTAINER_NAME = "real-estate-data"
+BLOB_NAME = "silver/storia_clean_data.csv"
