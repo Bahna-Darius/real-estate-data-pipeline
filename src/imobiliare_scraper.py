@@ -3,11 +3,15 @@ from config import (
     RAW_CSV_PATH, RAW_JSON_PATH
 )
 from bs4 import BeautifulSoup
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+from datetime import datetime, timezone
+from bs4 import Tag
 import pandas as pd
 import requests
-import random
+import datetime
 import logging
+import hashlib
+import random
 import time
 import os
 import re
@@ -44,49 +48,82 @@ def get_soup(url: str, headers: Dict[str, str]) -> Optional[BeautifulSoup]:
         return None
 
 
-def parse_listing(listing: BeautifulSoup) -> Dict[str, str]:
+def parse_listing(listing: Tag) -> Dict[str, Any]:
     """
-    Extracts the title, price, area, and URL link from a single listing HTML element.
+    Extracts data from a single real estate listing HTML element.
+
+    Generates production-ready metadata, including a unique MD5 hash ID
+    based on the URL and an ISO timestamp (UTC) of the scrape time.
 
     Args:
-        listing (BeautifulSoup): A single HTML <article> element representing a listing.
+        listing (Tag): A BeautifulSoup Tag representing a single property listing.
 
     Returns:
-        Dict[str, str]: A dictionary containing the extracted data.
+        Dict[str, Any]: A dictionary containing the extracted listing data,
+        formatted for a Bronze-layer data lake or database schema.
     """
-    # Extract Price
-    price_element = listing.find(string=re.compile("€"))
-    price = price_element.parent.get_text(strip=True).replace('\xa0', ' ') if price_element else "N/A"
+    # 1. Extract Link and Title
+    # find("a") returns the first <a> which is often an image wrapper with no text.
+    # We iterate to find the first <a> that actually has visible text content.
+    title = "N/A"
+    ad_url = "N/A"
+    for a_tag in listing.find_all("a", href=True):
+        text = a_tag.get_text(strip=True)
+        if text:
+            title = text
+            href_value = a_tag.get('href')
+            ad_url = f"https://www.storia.ro{href_value}" if href_value.startswith("/") else href_value
+            break
 
-    # Extract Area
+    # 2. Generate Primary Key (MD5 hash based on the URL)
+    listing_id = hashlib.md5(ad_url.encode('utf-8')).hexdigest() if ad_url != "N/A" else "N/A"
+
+    # 3. Extract Price
+    price = "N/A"
+    price_element = listing.find(string=re.compile(r"€"))
+    # Added defensive check for `.parent` to prevent AttributeError
+    if price_element and price_element.parent:
+        price = price_element.parent.get_text(strip=True).replace('\xa0', ' ')
+
+    # 4. Extract Area (m²)
     area = "N/A"
-    m2_elements = listing.find_all(string=re.compile("m²"))
+    m2_elements = listing.find_all(string=re.compile(r"m²"))
     for el in m2_elements:
-        if "€" not in el:
+        if "€" not in el and el.parent:
             area = el.parent.get_text(strip=True)
             break
 
-    # Extract Title and Link
-    title = "N/A"
-    ad_url = "N/A"
-    all_links = listing.find_all("a", href=True)
+    # 5. Extract Number of Rooms from title
+    # Scanning all text nodes finds label elements like "Numărul de camere" or the full title string.
+    # Extracting from title is more reliable: "Apartament 3 camere..." -> "3 camere"
+    rooms = "N/A"
+    room_match = re.search(r"(\d+)\s*camer[aăe]", title, re.IGNORECASE)
+    if room_match:
+        rooms = room_match.group(0)
+    elif re.search(r"garsonier[aă]", title, re.IGNORECASE):
+        # A studio apartment counts as 1 room
+        rooms = "1 camera"
 
-    for link in all_links:
-        href_value = link.get('href')
-        text_inside_link = link.get_text(strip=True)
+    # 6. Extract Location / Neighborhood
+    location = "N/A"
+    # storia.ro uses diacritics: "București" — regex must match both forms
+    location_elements = listing.find_all(string=re.compile(r"Bucure[sș]ti", re.IGNORECASE))
+    if location_elements and location_elements[0].parent:
+        raw_location = location_elements[0].parent.get_text(strip=True)
+        # Remove "București"/"Bucuresti" and surrounding punctuation to isolate neighborhood/sector
+        location = re.sub(r'(?i)Bucure[sș]ti', '', raw_location).strip(" ,-")
 
-        if href_value and text_inside_link:
-            title = text_inside_link
-            ad_url = href_value
-            if ad_url and ad_url.startswith("/"):
-                ad_url = "https://www.storia.ro" + ad_url
-            break
-
+    # Return the complete schema object
     return {
-        "Title": title,
-        "Price": price,
-        "Area": area,
-        "Link": ad_url
+        "listing_id": listing_id,
+        "scraped_at": datetime.datetime.now().isoformat(),
+        "source": "storia.ro",
+        "title": title,
+        "price": price,
+        "area": area,
+        "rooms": rooms,
+        "location": location,
+        "url": ad_url
     }
 
 
@@ -113,8 +150,8 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
         logging.info(f"[*] Existing database found! Performing Incremental Load...")
         existing_df = pd.read_csv(csv_filename)
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-        # Upsert logic: keep the latest version of the listing based on the unique Link
-        final_df = combined_df.drop_duplicates(subset=['Link'], keep='last')
+        # Upsert logic: keep the latest version of the listing based on the unique url
+        final_df = combined_df.drop_duplicates(subset=['url'], keep='last')
 
         new_listings_count = len(final_df) - len(existing_df)
 
