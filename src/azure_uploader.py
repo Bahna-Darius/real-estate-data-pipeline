@@ -2,7 +2,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient
-from config import PROCESSED_CSV_PATH, AZURE_CONTAINER_NAME, BLOB_NAME
+from config import AZURE_CONTAINER_NAME, BLOB_NAME, RAW_JSON_PATH
 
 
 load_dotenv()
@@ -72,7 +72,7 @@ def upload_to_azure_blob(file_path: str, container_name: str, blob_name: str) ->
 def main() -> None:
     logger.info("Starting the upload process...")
     upload_to_azure_blob(
-        file_path=PROCESSED_CSV_PATH,
+        file_path=RAW_JSON_PATH,
         container_name=AZURE_CONTAINER_NAME,
         blob_name=BLOB_NAME
     )
