@@ -93,16 +93,32 @@ def parse_listing(listing: Tag) -> Dict[str, Any]:
             area = el.parent.get_text(strip=True)
             break
 
-    # 5. Extract Number of Rooms from title
-    # Scanning all text nodes finds label elements like "Numărul de camere" or the full title string.
-    # Extracting from title is more reliable: "Apartament 3 camere..." -> "3 camere"
+    # 5. Extract Number of Rooms
+    # Primary: parse from title. Fallback: scan all text nodes in the article.
     rooms = "N/A"
     room_match = re.search(r"(\d+)\s*camer[aăe]", title, re.IGNORECASE)
     if room_match:
         rooms = room_match.group(0)
     elif re.search(r"garsonier[aă]", title, re.IGNORECASE):
-        # A studio apartment counts as 1 room
         rooms = "1 camera"
+    else:
+        # Fallback: search all visible text nodes inside the listing card
+        all_text = listing.get_text(" ", strip=True)
+        fallback_match = re.search(r"(\d+)\s*camer[aăe]", all_text, re.IGNORECASE)
+        if fallback_match:
+            rooms = fallback_match.group(0)
+        elif re.search(r"garsonier[aă]", all_text, re.IGNORECASE):
+            rooms = "1 camera"
+        else:
+            # Last resort: look for a dedicated rooms attribute or label element
+            for tag in listing.find_all(True):
+                aria = tag.get("aria-label", "") or ""
+                data_val = tag.get("data-testid", "") or ""
+                combined = f"{aria} {data_val} {tag.get_text(' ', strip=True)}"
+                m = re.search(r"(\d+)\s*camer[aăe]", combined, re.IGNORECASE)
+                if m:
+                    rooms = m.group(0)
+                    break
 
     # 6. Extract Location / Neighborhood
     location = "N/A"
