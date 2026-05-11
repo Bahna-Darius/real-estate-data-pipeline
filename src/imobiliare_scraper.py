@@ -184,25 +184,47 @@ def parse_listing(listing: Tag, rooms_lookup: Dict[str, int] = None) -> Dict[str
         or "N/A"
     )
 
-    # 6. Extract Location / Neighborhood
+    # 6. Extract Location / Neighborhood (Production-Ready via Full Text Scan)
     location = "N/A"
-    # storia.ro uses diacritics: "București" — regex must match both forms
-    location_elements = listing.find_all(string=re.compile(r"Bucure[sș]ti", re.IGNORECASE))
-    if location_elements and location_elements[0].parent:
-        raw_location = location_elements[0].parent.get_text(strip=True)
-        # Remove "București"/"Bucuresti" and surrounding punctuation to isolate neighborhood/sector
-        location = re.sub(r'(?i)Bucure[sș]ti', '', raw_location).strip(" ,-")
+
+    # `stripped_strings` gets ALL visible text from the HTML, ignoring whether it's a <p>, <span>, or <div>.
+    # This protects our pipeline against Schema Drift (when the website changes its HTML layout).
+    for text in listing.stripped_strings:
+        text_lower = text.lower()
+
+        # Apply negative filtering: The location is usually the text that is NOT the title, price, area, or a button.
+        if (len(text) > 3 and
+                "€" not in text and
+                "lei" not in text_lower and
+                "m²" not in text_lower and
+                "camere" not in text_lower and
+                "salveaz" not in text_lower and  # Ignore "Salveaza anuntul" UI buttons
+                text != title and
+                text != price):
+
+            # Clean "Bucuresti" only if it has a comma/space after it (e.g., "Bucuresti, Sector 1")
+            # We use ^ to ensure it only matches at the start of the string.
+            clean_loc = re.sub(r'(?i)^Bucure[sșţt]ti[,\s]*', '', text).strip(" ,-")
+
+            if clean_loc:
+                location = clean_loc
+                break
+            elif "bucure" in text_lower:
+                # If the text was EXACTLY the word "Bucuresti" and our regex erased it, keep it as Bucuresti.
+                location = "București"
+                break
 
     # Return the complete schema object
     return {
         "listing_id": listing_id,
-        "scraped_at": datetime.datetime.now().isoformat(),
+        "scraped_at": datetime.datetime.now(timezone.utc).isoformat(),
         "source": "storia.ro",
         "title": title,
         "price": price,
         "area": area,
         "rooms": rooms,
-        "location": location,
+        # We enforce a strict check to NEVER return an empty string ""
+        "location": location if location != "" else "N/A",
         "url": ad_url
     }
 
@@ -228,7 +250,9 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
 
     if os.path.exists(csv_filename):
         logging.info(f"[*] Existing database found! Performing Incremental Load...")
-        existing_df = pd.read_csv(csv_filename)
+        # PRODUCTION FIX: Added keep_default_na=False to prevent Pandas
+        # from automatically converting "N/A" strings into NaN (null) values.
+        existing_df = pd.read_csv(csv_filename, keep_default_na=False)
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
         # Upsert logic: keep the latest version of the listing based on the unique url
         final_df = combined_df.drop_duplicates(subset=['url'], keep='last')
@@ -244,8 +268,14 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
         logging.info(f"[*] No existing database found. Creating first full load...")
         final_df = new_df
 
+    # CSV FILE
     final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+
+    # Ensure missing values are explicitly written as null, not empty strings
+    # JSON FILE
+    final_df.replace("", "N/A", inplace=True)
     final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
+
     logging.info(f"[+] Success! Database now contains {len(final_df)} total records.")
 
 

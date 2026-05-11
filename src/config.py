@@ -1,7 +1,8 @@
 import os
 
 
-BASE_URL = "https://www.storia.ro/ro/rezultate/vanzare/apartament/bucuresti"
+CITY_NAME = "bucuresti"
+BASE_URL = f"https://www.storia.ro/ro/rezultate/vanzare/apartament/{CITY_NAME}"
 NUM_PAGES_TO_SCRAPE = 100
 
 
