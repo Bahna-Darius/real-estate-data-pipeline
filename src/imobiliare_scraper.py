@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from bs4 import Tag
 import pandas as pd
 import requests
-import datetime
 import logging
 import hashlib
 import random
@@ -16,8 +15,6 @@ import time
 import json
 import os
 import re
-
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,13 +29,6 @@ def get_soup(url: str, headers: Dict[str, str]) -> Optional[BeautifulSoup]:
     """
     Sends a GET request to the specified URL and returns a BeautifulSoup object.
     If the request fails, it handles the error gracefully and returns None.
-
-    Args:
-        url (str): The target URL to scrape.
-        headers (Dict[str, str]): The HTTP headers to pass with the request.
-
-    Returns:
-        Optional[BeautifulSoup]: The parsed HTML content, or None if the request failed.
     """
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -58,7 +48,7 @@ _ROOMS_TEXT_MAP = {
 
 def extract_nextdata_rooms(soup: BeautifulSoup) -> Dict[str, int]:
     """
-    Parses __NEXT_DATA__ and returns slug-based URL → numberOfRooms.
+    Parses __NEXT_DATA__ and returns slug-based URL -> numberOfRooms.
     Works on all paginated pages (unlike JSON-LD which only appears on page 1).
     """
     url_to_rooms: Dict[str, int] = {}
@@ -83,21 +73,9 @@ def extract_nextdata_rooms(soup: BeautifulSoup) -> Dict[str, int]:
 def parse_listing(listing: Tag, rooms_lookup: Dict[str, int] = None) -> Dict[str, Any]:
     """
     Extracts data from a single real estate listing HTML element.
-
-    Generates production-ready metadata, including a unique MD5 hash ID
-    based on the URL and an ISO timestamp (UTC) of the scrape time.
-
-    Args:
-        listing (Tag): A BeautifulSoup Tag representing a single property listing.
-        rooms_lookup (Dict[str, int]): URL → numberOfRooms map from page JSON-LD.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the extracted listing data,
-        formatted for a Bronze-layer data lake or database schema.
+    Generates production-ready metadata, including a unique MD5 hash ID.
     """
     # 1. Extract Link and Title
-    # find("a") returns the first <a> which is often an image wrapper with no text.
-    # We iterate to find the first <a> that actually has visible text content.
     title = "N/A"
     ad_url = "N/A"
     for a_tag in listing.find_all("a", href=True):
@@ -108,13 +86,12 @@ def parse_listing(listing: Tag, rooms_lookup: Dict[str, int] = None) -> Dict[str
             ad_url = f"https://www.storia.ro{href_value}" if href_value.startswith("/") else href_value
             break
 
-    # 2. Generate Primary Key (MD5 hash based on the URL)
+    # 2. Generate Primary Key
     listing_id = hashlib.md5(ad_url.encode('utf-8')).hexdigest() if ad_url != "N/A" else "N/A"
 
     # 3. Extract Price
     price = "N/A"
     price_element = listing.find(string=re.compile(r"€"))
-    # Added defensive check for `.parent` to prevent AttributeError
     if price_element and price_element.parent:
         price = price_element.parent.get_text(strip=True).replace('\xa0', ' ')
 
@@ -127,97 +104,91 @@ def parse_listing(listing: Tag, rooms_lookup: Dict[str, int] = None) -> Dict[str
             break
 
     # 5. Extract Number of Rooms
-    # Patterns that cover: "3 camere", "3 Camere", "3-camere", "3 cam.", "3 camare" (typo)
-    ROOM_PATTERN = re.compile(r"(\d+)[-\s]*cam[ae]r[eaă]?", re.IGNORECASE)
-    CAM_ABBREV   = re.compile(r"(\d+)[-\s]*cam[.\s]",        re.IGNORECASE)
-    STUDIO_PATTERN = re.compile(r"gars[io]{1,2}ner[aă]",     re.IGNORECASE)
-    # Matches "Numărul de camere : 1" or "Nr. camere: 2" in concatenated get_text() output
+    ROOM_PATTERN = re.compile(r"(\d+)[-\s]*cam[ae]r[ea?]?", re.IGNORECASE)
+    CAM_ABBREV = re.compile(r"(\d+)[-\s]*cam[.\s]", re.IGNORECASE)
+    STUDIO_PATTERN = re.compile(r"gars[io]{1,2}ner[a?]", re.IGNORECASE)
     CAMERE_LABEL_PATTERN = re.compile(
-        r"num[aă]r(?:ul)?\s+de\s+camere\s*:?\s*(\d+)", re.IGNORECASE
+        r"num[a?]r(?:ul)?\s+de\s+camere\s*:?\s*(\d+)", re.IGNORECASE
     )
 
     def _extract_rooms(text: str):
         text = text.replace("-", " ")
         m = CAMERE_LABEL_PATTERN.search(text)
-        if m:
-            return f"{m.group(1)} camere"
+        if m: return f"{m.group(1)} camere"
         m = ROOM_PATTERN.search(text)
-        if m:
-            return f"{m.group(1)} camere"
+        if m: return f"{m.group(1)} camere"
         m = CAM_ABBREV.search(text)
-        if m:
-            return f"{m.group(1)} camere"
-        if STUDIO_PATTERN.search(text):
-            return "1 camera"
+        if m: return f"{m.group(1)} camere"
+        if STUDIO_PATTERN.search(text): return "1 camera"
         return None
 
     def _extract_rooms_from_label(tag: Tag) -> Optional[str]:
-        # Targets React-rendered: <div>Numărul de camere<!-- -->:</div><div>3 </div>
-        label = tag.find(string=re.compile(r"num[aă]r(?:ul)?\s+de\s+camere", re.IGNORECASE))
+        label = tag.find(string=re.compile(r"num[a?]r(?:ul)?\s+de\s+camere", re.IGNORECASE))
         if label and label.parent:
-            # value may be the next sibling of the label's parent div
             value_el = label.parent.find_next_sibling()
             if value_el:
                 val = value_el.get_text(strip=True)
-                if val.isdigit():
-                    return f"{val} camere"
-            # fallback: value may be in the grandparent's next sibling
+                if val.isdigit(): return f"{val} camere"
             if label.parent.parent:
                 value_el = label.parent.parent.find_next_sibling()
                 if value_el:
                     val = value_el.get_text(strip=True)
-                    if val.isdigit():
-                        return f"{val} camere"
+                    if val.isdigit(): return f"{val} camere"
         return None
 
-    # JSON-LD lookup is the most reliable source — checked first
     jsonld_rooms = None
     if rooms_lookup and ad_url in rooms_lookup:
         jsonld_rooms = f"{rooms_lookup[ad_url]} camere"
 
     rooms = (
-        jsonld_rooms
-        or _extract_rooms(title)
-        or _extract_rooms(ad_url)
-        or _extract_rooms_from_label(listing)
-        or _extract_rooms(listing.get_text(" ", strip=True))
-        or "N/A"
+            jsonld_rooms
+            or _extract_rooms(title)
+            or _extract_rooms(ad_url)
+            or _extract_rooms_from_label(listing)
+            or _extract_rooms(listing.get_text(" ", strip=True))
+            or "N/A"
     )
 
-    # 6. Extract Location / Neighborhood (Production-Ready via Full Text Scan)
+    # 6. Extract Location / Neighborhood (Bulletproof Location Targeting)
     location = "N/A"
 
-    # `stripped_strings` gets ALL visible text from the HTML, ignoring whether it's a <p>, <span>, or <div>.
-    # This protects our pipeline against Schema Drift (when the website changes its HTML layout).
+    # Define garbage phrases to ignore (UI buttons, timestamps, agency names)
+    garbage_phrases = [
+        "adăugat", "adaugat", "dorești", "doresti", "srl", "real estate",
+        "imobiliare", "actualizat", "salveaz", "comision", "acord", "agenția", "agentia", "dezvoltator"
+    ]
+
+    # 1st Pass: Positive Targeting (Safest approach)
     for text in listing.stripped_strings:
         text_lower = text.lower()
+        if "bucure" in text_lower or "ilfov" in text_lower:
+            # We found the target! Just keep the EXACT text from the website.
+            location = text.strip(" ,-")
+            break
 
-        # Apply negative filtering: The location is usually the text that is NOT the title, price, area, or a button.
-        if (len(text) > 3 and
-                "€" not in text and
-                "lei" not in text_lower and
-                "m²" not in text_lower and
-                "camere" not in text_lower and
-                "salveaz" not in text_lower and  # Ignore "Salveaza anuntul" UI buttons
-                text != title and
-                text != price):
-
-            # Clean "Bucuresti" only if it has a comma/space after it (e.g., "Bucuresti, Sector 1")
-            # We use ^ to ensure it only matches at the start of the string.
-            clean_loc = re.sub(r'(?i)^Bucure[sșţt]ti[,\s]*', '', text).strip(" ,-")
-
-            if clean_loc:
-                location = clean_loc
+    # 2nd Pass: Aggressive Negative Filtering (Fallback)
+    if location == "N/A":
+        for text in listing.stripped_strings:
+            text_lower = text.lower()
+            if (len(text) > 3 and
+                    "€" not in text and
+                    "lei" not in text_lower and
+                    "m²" not in text_lower and
+                    "camere" not in text_lower and
+                    text != title and
+                    text != price and
+                    not any(garbage in text_lower for garbage in garbage_phrases)):
+                # Keep the exact text here as well
+                location = text.strip(" ,-")
                 break
-            elif "bucure" in text_lower:
-                # If the text was EXACTLY the word "Bucuresti" and our regex erased it, keep it as Bucuresti.
-                location = "București"
-                break
+
+    # Safety failsafe
+    location = location if location != "" else "N/A"
 
     # Return the complete schema object
     return {
         "listing_id": listing_id,
-        "scraped_at": datetime.datetime.now(timezone.utc).isoformat(),
+        "scraped_at": datetime.now(timezone.utc).isoformat(),
         "source": "storia.ro",
         "title": title,
         "price": price,
@@ -231,12 +202,7 @@ def parse_listing(listing: Tag, rooms_lookup: Dict[str, int] = None) -> Dict[str
 
 def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
     """
-    Saves the scraped data to CSV and JSON formats using an incremental load (upsert) approach
-    to prevent duplicate entries based on the listing's URL.
-
-    Args:
-        scraped_data (List[Dict[str, str]]): The fresh data extracted during this run.
-        output_dir (str): The directory where the raw data files should be stored.
+    Saves the scraped data to CSV and JSON formats using an incremental load (upsert).
     """
     if not scraped_data:
         logging.info("[-] No data to save.")
@@ -281,8 +247,7 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
 
 def main() -> None:
     """
-    The main orchestrator function. It handles pagination, coordinates the extraction
-    functions, applies polite delays, and saves the final output.
+    The main orchestrator function.
     """
     scraped_data: List[Dict[str, str]] = []
     num_pages = NUM_PAGES_TO_SCRAPE
