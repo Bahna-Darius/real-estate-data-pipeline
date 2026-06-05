@@ -211,5 +211,9 @@ data/
 *.csv
 *.json
 
+# PySpark local temp files
+derby.log
+metastore_db/
+
 # Local planning & notes (not for repo)
 ROADMAP_PERSONAL.md
