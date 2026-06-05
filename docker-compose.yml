@@ -1,0 +1,24 @@
+services:
+
+  scraper:
+    build: .
+    volumes:
+      - ./data:/app/data
+
+  transform:
+    build: .
+    command: python src/01_Bronze_to_Silver.py
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      scraper:
+        condition: service_completed_successfully
+
+  gold:
+    build: .
+    command: python src/02_Silver_to_Gold.py
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      transform:
+        condition: service_completed_successfully
