@@ -2,15 +2,15 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
-  <img src="https://img.shields.io/badge/PySpark-Databricks-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Azure_Blob_Storage-Data_Lake-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Delta_Lake-Silver_Layer-003366?style=for-the-badge&logo=delta&logoColor=white"/>
+  <img src="https://img.shields.io/badge/PySpark-Local_Mode-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Delta_Lake-Parquet-003366?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Architecture-Medallion-gold?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge"/>
 </p>
 
 <p align="center">
-  An end-to-end data engineering pipeline that scrapes <strong>3,700+ real estate listings</strong> from the Romanian property market (Bucharest), processes them through a <strong>Medallion Architecture</strong> (Bronze → Silver → Gold), and lands analytics-ready data in <strong>Azure Blob Storage</strong> via <strong>Databricks</strong>.
+  A fully containerized, end-to-end data engineering pipeline that scrapes <strong>3,700+ real estate listings</strong> from the Romanian property market (Bucharest), processes them through a <strong>Medallion Architecture</strong> (Bronze → Silver → Gold) using <strong>PySpark in local mode</strong>, and produces analytics-ready aggregations — all runnable with a single Docker command.
 </p>
 
 ---
@@ -19,55 +19,53 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                           Data Pipeline Flow                                  │
+│                    Fully Local · Fully Containerized                          │
 └──────────────────────────────────────────────────────────────────────────────┘
 
   [storia.ro]
       │
       │  HTTP GET · BeautifulSoup · __NEXT_DATA__ parsing
       ▼
-┌─────────────────────────────────┐
-│         🥉 BRONZE LAYER         │         Local landing zone
-│                                 │  ──────────────────────────
-│  · Paginated scraping (100 pg)  │  data/raw/storia_raw.json
-│  · MD5 deterministic PK         │  data/raw/storia_raw.csv
-│  · Incremental upsert (URL key) │
-│  · 3-level rooms fallback       │
-│  · UTC timestamp per record     │
-└────────────────┬────────────────┘
-                 │
-                 │  azure_uploader.py
-                 ▼
-      ┌──────────────────────┐
-      │  Azure Blob Storage  │   Container: bronze/
-      │  storia_raw.json     │
-      └──────────┬───────────┘
-                 │
-                 │  Databricks · PySpark · 01_Bronze_to_Silver.ipynb
-                 ▼
-┌─────────────────────────────────┐
-│         🥈 SILVER LAYER         │         Cleaned & typed
-│                                 │  ──────────────────────────
-│  · Price → INT (€)              │  Azure Blob Storage
-│  · Area → DOUBLE (m²)           │  Container: silver/
-│  · Price/m² computed metric     │  Format: Delta Lake
-│  · Rooms → INT                  │
-│  · Sector extracted (regex)     │
-│  · Neighborhood cleaned         │
-│  · Null handling (keep rows)    │
-└────────────────┬────────────────┘
-                 │
-                 │  Databricks · SQL · 02_Silver_to_Gold.ipynb
-                 ▼
-┌─────────────────────────────────┐
-│         🥇 GOLD LAYER           │         Business-ready
-│                                 │  ──────────────────────────
-│  · Avg price by sector          │  Databricks Table
-│  · Avg €/m² by neighborhood     │  default.gold_top_cartiere
-│  · Listing count aggregations   │
-│  · Avg rooms per zone           │
-│  · Filtered: ≥ 2 listings/zone  │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│               🐳 Docker Compose                      │
+│                                                     │
+│  ┌──────────────────────────────────────────────┐   │
+│  │          🥉 scraper service                  │   │
+│  │                                              │   │
+│  │  · Paginated scraping (100 pages)            │   │
+│  │  · MD5 deterministic PK                      │   │
+│  │  · Incremental upsert (URL key)              │   │
+│  │  · 3-level rooms fallback                    │   │
+│  │  · UTC timestamp per record                  │   │
+│  │                                              │   │
+│  │  Output → data/raw/storia_raw_data.json      │   │
+│  └──────────────────────┬───────────────────────┘   │
+│                         │ shared volume               │
+│  ┌──────────────────────▼───────────────────────┐   │
+│  │          🥈 transform service  (PySpark)      │   │
+│  │                                              │   │
+│  │  · Price  → Price_EUR (INT)                  │   │
+│  │  · Area   → Area_sqm  (DOUBLE)               │   │
+│  │  · Price/m² computed metric                  │   │
+│  │  · Rooms  → INT                              │   │
+│  │  · City_Sector extracted (regex)             │   │
+│  │  · Neighborhood cleaned                      │   │
+│  │                                              │   │
+│  │  Output → data/silver/  (Parquet)            │   │
+│  └──────────────────────┬───────────────────────┘   │
+│                         │ shared volume               │
+│  ┌──────────────────────▼───────────────────────┐   │
+│  │          🥇 gold service  (PySpark SQL)       │   │
+│  │                                              │   │
+│  │  · Avg price by sector                       │   │
+│  │  · Avg €/m² by neighborhood                  │   │
+│  │  · Listing count aggregations                │   │
+│  │  · Filter: ≥ 2 listings per zone             │   │
+│  │                                              │   │
+│  │  Output → data/gold/   (Parquet + CSV)       │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                     │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -78,10 +76,10 @@
 |-------|---------------|---------|
 | **Ingestion** | `requests` + `BeautifulSoup4` | HTTP scraping with polite random delays |
 | **Parsing** | `__NEXT_DATA__` JSON + HTML fallback | Robust room & metadata extraction |
-| **Local Storage** | `pandas` → CSV + JSON | Bronze-layer landing & upsert logic |
-| **Cloud Storage** | Azure Blob Storage | Data lake for Bronze and Silver layers |
-| **Transformation** | PySpark (Databricks) | Silver-layer cleaning, typing, enrichment |
-| **Serving** | Delta Lake + Databricks SQL | Gold-layer aggregations, permanent tables |
+| **Bronze Storage** | `pandas` → CSV + JSON | Local landing zone & upsert logic |
+| **Silver / Gold** | PySpark `local[*]` | Type casting, enrichment, SQL aggregations |
+| **Output format** | Parquet (Silver/Gold) + CSV (Gold) | Columnar storage + human-readable export |
+| **Containerization** | Docker + Docker Compose | Reproducible pipeline — zero local setup |
 | **Config & Secrets** | `python-dotenv` | Environment variable management |
 | **Language** | Python 3.12 | Pipeline orchestration |
 
@@ -133,9 +131,9 @@ The scraper targets apartment listings in Bucharest and handles all real-world m
 
 ---
 
-### 🥈 Silver — Cleaned & Typed (`01_Bronze_to_Silver.ipynb`)
+### 🥈 Silver — Cleaned & Typed (`01_Bronze_to_Silver.py`)
 
-PySpark notebook on Databricks that transforms raw strings into analytics-ready types:
+PySpark script running in `local[*]` mode — uses all available CPU cores on the host machine:
 
 - `price` → `Price_EUR (INT)` via `regexp_replace` + `try_cast` (graceful on malformed data)
 - `area` → `Area_sqm (DOUBLE)` via `regexp_extract`
@@ -143,30 +141,36 @@ PySpark notebook on Databricks that transforms raw strings into analytics-ready 
 - `rooms` → `rooms (INT)` via `regexp_extract`
 - `City_Sector` — extracted with regex `sector(?:ul)?\s*[1-6]`, null-safe
 - `Neighborhood` — sector and city name stripped, trimmed cleanly
-- **Architectural decision:** null rows are *retained* in Silver — dropping them would corrupt Gold-layer totals (e.g. "total market value"). Null handling is delegated to Gold queries via `COALESCE` / `WHERE`.
-- Saved as **Delta Lake** format (versioned, ACID, time-travel ready)
+- **Architectural decision:** null rows are *retained* in Silver — dropping them would corrupt Gold-layer totals (e.g. "total market value"). Null handling is delegated to Gold queries
+- Saved as **Parquet** — columnar, compressed, optimized for analytical queries
+- Spark shuffle partitions set to `8` — right-sized for the host CPU (i5-10300H, 8 logical cores); default 200 would create 192 empty Parquet files
 
 ---
 
-### 🥇 Gold — Business Aggregations (`02_Silver_to_Gold.ipynb`)
+### 🥇 Gold — Business Aggregations (`02_Silver_to_Gold.py`)
 
-Pure SQL layer (dbt-style) that produces the final reporting table:
+PySpark SQL aggregation layer — mirrors the logic from the original Databricks notebook:
 
-```sql
-CREATE OR REPLACE TABLE default.gold_top_cartiere AS
-SELECT
-    COALESCE(City_Sector, 'Ilfov / Necunoscut') AS Sector,
-    Neighborhood                                  AS Cartier,
-    COUNT(listing_id)                             AS Numar_Anunturi,
-    ROUND(AVG(Price_EUR), 0)                      AS Pret_Mediu_Total_EUR,
-    ROUND(AVG(Price_per_sqm), 0)                  AS Pret_Mediu_MP_EUR,
-    ROUND(AVG(rooms), 1)                          AS Numar_Mediu_Camere
-FROM delta.`/Volumes/workspace/default/raw_data/silver_storia/`
-WHERE Neighborhood IS NOT NULL AND Neighborhood != ''
-GROUP BY City_Sector, Neighborhood
-HAVING COUNT(listing_id) >= 2
-ORDER BY Pret_Mediu_MP_EUR DESC
+```python
+df_gold = (
+    df_silver
+    .filter(col("Neighborhood").isNotNull())
+    .groupBy(
+        coalesce(col("City_Sector"), lit("Ilfov / Necunoscut")).alias("Sector"),
+        col("Neighborhood").alias("Cartier")
+    )
+    .agg(
+        count("listing_id")               .alias("Numar_Anunturi"),
+        round(avg("Price_EUR"), 0)         .alias("Pret_Mediu_Total_EUR"),
+        round(avg("Price_per_sqm"), 0)     .alias("Pret_Mediu_MP_EUR"),
+        round(avg("rooms"), 1)             .alias("Numar_Mediu_Camere"),
+    )
+    .filter(col("Numar_Anunturi") >= 2)
+    .orderBy(col("Pret_Mediu_MP_EUR").desc())
+)
 ```
+
+Output: **Parquet** (programmatic use) + **single CSV** (human-readable, ready for Excel / BI tools)
 
 ---
 
@@ -176,18 +180,18 @@ ORDER BY Pret_Mediu_MP_EUR DESC
 real-estate-data-pipeline/
 ├── src/
 │   ├── imobiliare_scraper.py       # Bronze: scrape, parse & local upsert
-│   ├── azure_uploader.py           # Cloud: upload Bronze data to Azure Blob
-│   ├── config.py                   # Centralized config (URLs, paths, Azure)
-│   └── utils/
-│       └── fix_null_rooms.py       # One-off: retroactive rooms fix via detail pages
-├── databricks_notebooks/
-│   ├── 01_Bronze_to_Silver.ipynb   # PySpark: clean, type-cast, enrich → Delta
-│   └── 02_Silver_to_Gold.ipynb     # SQL: aggregate → gold_top_cartiere table
-├── data/
-│   └── raw/                        # Local Bronze landing zone (gitignored)
-│       ├── storia_raw_data.csv
-│       └── storia_raw_data.json
-├── .env                            # Azure credentials (gitignored)
+│   ├── 01_Bronze_to_Silver.py      # Silver: PySpark type-cast & location enrichment
+│   ├── 02_Silver_to_Gold.py        # Gold:   PySpark SQL aggregations
+│   └── config.py                   # Centralized paths & constants
+├── databricks_notebooks/           # Reference: original Databricks implementation
+│   ├── 01_Bronze_to_Silver.ipynb
+│   └── 02_Silver_to_Gold.ipynb
+├── data/                           # Generated — gitignored
+│   ├── raw/                        # Bronze: JSON + CSV
+│   ├── silver/                     # Silver: Parquet
+│   └── gold/                       # Gold:   Parquet + CSV
+├── Dockerfile                      # Python 3.12 + Java 21 + dependencies
+├── docker-compose.yml              # Three-stage pipeline: scraper → transform → gold
 ├── requirements.txt
 └── README.md
 ```
@@ -196,75 +200,81 @@ real-estate-data-pipeline/
 
 ## 🚀 Getting Started
 
-### Prerequisites
+The only requirement is **Docker Desktop** (or Docker Engine on Linux).
 
-- Python 3.12+
-- Azure Storage account (for cloud upload)
-- Databricks workspace (for Silver & Gold layers)
-
-### 1. Clone & install
+### 1. Clone
 
 ```bash
 git clone https://github.com/Bahna-Darius/real-estate-data-pipeline.git
 cd real-estate-data-pipeline
-pip install -r requirements.txt
 ```
 
-### 2. Configure environment
-
-Create a `.env` file in the project root:
-
-```env
-AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=YOUR_ACCOUNT;AccountKey=YOUR_KEY;...
-```
-
-### 3. Run the pipeline
+### 2. Build the image
 
 ```bash
-# Step 1 — Scrape & save Bronze layer locally
-python src/imobiliare_scraper.py
-
-# Step 2 — Upload Bronze data to Azure Blob Storage
-python src/azure_uploader.py
+docker compose build
 ```
 
-### 4. Databricks (Silver & Gold)
+### 3. Run the pipeline — stage by stage
 
-Upload `databricks_notebooks/` to your Databricks workspace and run in order:
-1. `01_Bronze_to_Silver.ipynb` — reads from Azure, writes Delta to Silver
-2. `02_Silver_to_Gold.ipynb` — reads Silver, creates `gold_top_cartiere` table
+```bash
+# Stage 1 — Scrape Bronze layer (storia.ro → data/raw/)
+docker compose run scraper
+
+# Stage 2 — Transform to Silver (raw JSON → data/silver/ Parquet)
+docker compose run transform
+
+# Stage 3 — Aggregate to Gold (Silver → data/gold/ Parquet + CSV)
+docker compose run gold
+```
+
+All output lands in `./data/` on your local machine via the shared Docker volume.
+
+### 4. Run locally (without Docker)
+
+```bash
+pip install -r requirements.txt
+
+python src/imobiliare_scraper.py
+python src/01_Bronze_to_Silver.py
+python src/02_Silver_to_Gold.py
+```
 
 ---
 
 ## 🧠 Key Engineering Decisions
 
-**Incremental load over full refresh**
-URL-based deduplication ensures repeated runs only append genuinely new listings — no wasted API calls, no duplicate records, lower storage cost.
+**Fully containerized — zero local setup**
+The entire pipeline (scraper + PySpark JVM) runs inside a single Docker image. Anyone can clone and run with `docker compose run scraper` — no Python version conflicts, no Java installation, no venv setup.
 
-**`__NEXT_DATA__` as primary rooms source**
-storia.ro renders via Next.js; room count is only reliable in the embedded JSON blob (`__NEXT_DATA__`), not in the rendered HTML. JSON-LD `numberOfRooms` only appears on page 1. The 3-level fallback (Next data → title regex → full-text regex) covers all edge cases.
+**PySpark local mode over a managed cluster**
+For a dataset of ~3,700 rows, a full Spark cluster would be wasteful. `local[*]` mode utilizes all CPU cores on the host machine while keeping the architecture identical to what would run on a real cluster — making it trivially portable to Databricks, EMR, or Dataproc later.
+
+**Shuffle partitions tuned to hardware**
+PySpark defaults to 200 shuffle partitions. On a 3,700-row dataset this creates 192+ empty Parquet part-files. Setting `spark.sql.shuffle.partitions=8` (matching the 8 logical cores of the host CPU) right-sizes the output and dramatically reduces I/O overhead.
+
+**Incremental load over full refresh**
+URL-based deduplication ensures repeated runs only append genuinely new listings — no wasted scraping, no duplicate records.
 
 **Deterministic MD5 primary keys**
-Hashing the listing URL produces stable, reproducible IDs without a database sequence — making the pipeline stateless, testable, and cloud-portable.
+Hashing the listing URL produces stable, reproducible IDs without a database sequence — making the pipeline stateless and testable.
 
 **Nulls retained in Silver**
-Dropping null rows at the Silver layer would silently corrupt Gold aggregations (e.g., average price calculations would exclude valid listings that simply have no sector data). Null handling is a Gold-layer concern, applied per query via `COALESCE`.
+Dropping null rows at the Silver layer would silently corrupt Gold aggregations (e.g., average price calculations would exclude valid listings that simply have no sector data). Null handling is a Gold-layer concern, applied per query via `coalesce`.
 
-**`keep_default_na=False` in pandas**
-Without this flag, pandas silently converts the string `"N/A"` to `NaN` on CSV read — causing downstream type errors and false null counts. Explicitly disabled to preserve data intent.
+**Parquet for Silver, Parquet + CSV for Gold**
+Silver is consumed programmatically — Parquet's columnar compression makes it ideal. Gold is the final reporting layer — adding a single-file CSV export makes it immediately shareable without any tooling.
 
 ---
 
 ## 🗺️ Roadmap
 
 - [x] Bronze layer scraper with incremental upsert
-- [x] Azure Blob Storage integration
-- [x] Silver layer — numeric typing, null cleanup, sector/neighborhood extraction
-- [x] Gold layer — aggregated market analytics (SQL, dbt-style)
+- [x] Silver layer — PySpark local: type casting, null cleanup, sector/neighborhood extraction
+- [x] Gold layer — PySpark SQL: aggregated market analytics
+- [x] Docker + Docker Compose — fully containerized, zero-setup pipeline
 - [x] Robust rooms extraction with 3-level fallback
-- [x] Retroactive null-rooms fixer (`fix_null_rooms.py`)
-- [ ] 🐳 Docker + Docker Compose for reproducible local execution
 - [ ] 📊 Streamlit dashboard — price trends, sector heatmap, room distribution
-- [ ] 🧪 Unit tests with `pytest` for scraper and uploader
+- [ ] 🧪 Unit tests with `pytest` for scraper and transformations
 - [ ] ⚙️ GitHub Actions CI/CD — automated test runs on push
 - [ ] 🌀 Apache Airflow DAG for scheduled pipeline orchestration
