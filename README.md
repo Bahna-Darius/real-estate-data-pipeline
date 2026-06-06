@@ -174,22 +174,48 @@ Output: **Parquet** (programmatic use) + **single CSV** (human-readable, ready f
 
 ---
 
+## 🖥️ Running Modes
+
+This pipeline supports two deployment configurations depending on your infrastructure:
+
+| Mode | Storage | Processing | How to run |
+|------|---------|------------|------------|
+| **Local** | `data/` folder (shared Docker volume) | PySpark `local[*]` inside Docker | `docker compose up` |
+| **Cloud** | Azure Blob Storage (`azure_uploader.py`) | Databricks cluster (notebooks) | Configure `.env`, run `azure_uploader.py` then open notebooks |
+
+The **local mode** is fully self-contained — no cloud credentials required.
+The **cloud mode** reflects the original production setup and requires an Azure Storage account and a Databricks workspace.
+
+---
+
 ## 📁 Project Structure
 
 ```
 real-estate-data-pipeline/
+├── .github/
+│   └── workflows/                  # CI/CD — GitHub Actions (coming soon)
 ├── src/
 │   ├── imobiliare_scraper.py       # Bronze: scrape, parse & local upsert
 │   ├── 01_Bronze_to_Silver.py      # Silver: PySpark type-cast & location enrichment
 │   ├── 02_Silver_to_Gold.py        # Gold:   PySpark SQL aggregations
-│   └── config.py                   # Centralized paths & constants
+│   ├── transformations.py          # Pure-Python helpers (used by tests)
+│   ├── azure_uploader.py           # Cloud mode: upload Bronze data to Azure Blob
+│   ├── config.py                   # Centralized paths & constants
+│   └── utils/
+│       └── fix_null_rooms.py       # One-off null repair utility
+├── tests/
+│   └── test_transformations.py     # Unit tests — pytest, no Spark required
 ├── databricks_notebooks/           # Reference: original Databricks implementation
 │   ├── 01_Bronze_to_Silver.ipynb
 │   └── 02_Silver_to_Gold.ipynb
+├── dashboards/
+│   └── app.py                      # Streamlit dashboard — price analytics & charts
 ├── data/                           # Generated — gitignored
 │   ├── raw/                        # Bronze: JSON + CSV
 │   ├── silver/                     # Silver: Parquet
 │   └── gold/                       # Gold:   Parquet + CSV
+├── conftest.py                     # pytest root configuration
+├── .env.example                    # Environment variable template (safe to commit)
 ├── Dockerfile                      # Python 3.12 + Java 21 + dependencies
 ├── docker-compose.yml              # Three-stage pipeline: scraper → transform → gold
 ├── requirements.txt
@@ -274,7 +300,7 @@ Silver is consumed programmatically — Parquet's columnar compression makes it 
 - [x] Gold layer — PySpark SQL: aggregated market analytics
 - [x] Docker + Docker Compose — fully containerized, zero-setup pipeline
 - [x] Robust rooms extraction with 3-level fallback
-- [ ] 📊 Streamlit dashboard — price trends, sector heatmap, room distribution
-- [ ] 🧪 Unit tests with `pytest` for scraper and transformations
+- [x] 📊 Streamlit dashboard — price trends, sector breakdown, room distribution
+- [x] 🧪 Unit tests with `pytest` — transformation helpers, parametrized, no Spark required
 - [ ] ⚙️ GitHub Actions CI/CD — automated test runs on push
 - [ ] 🌀 Apache Airflow DAG for scheduled pipeline orchestration
