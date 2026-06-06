@@ -11,8 +11,8 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, os.path.dirname(__file__))
-from ..config import HEADERS, RAW_JSON_PATH, RAW_CSV_PATH
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent.parent))
+from config import HEADERS, RAW_JSON_PATH, RAW_CSV_PATH
 
 logging.basicConfig(
     level=logging.INFO,

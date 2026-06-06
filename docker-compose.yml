@@ -2,12 +2,13 @@ services:
 
   scraper:
     build: .
+    command: python src/ingestion/imobiliare_scraper.py
     volumes:
       - ./data:/app/data
 
   transform:
     build: .
-    command: python src/01_Bronze_to_Silver.py
+    command: python src/pipeline/01_Bronze_to_Silver.py
     volumes:
       - ./data:/app/data
     depends_on:
@@ -16,7 +17,7 @@ services:
 
   gold:
     build: .
-    command: python src/02_Silver_to_Gold.py
+    command: python src/pipeline/02_Silver_to_Gold.py
     volumes:
       - ./data:/app/data
     depends_on:

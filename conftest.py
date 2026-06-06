@@ -7,4 +7,7 @@ with both `pytest` and `python -m pytest`.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+_root = Path(__file__).parent
+sys.path.insert(0, str(_root))
+sys.path.insert(0, str(_root / "src"))
+sys.path.insert(0, str(_root / "src" / "pipeline"))
