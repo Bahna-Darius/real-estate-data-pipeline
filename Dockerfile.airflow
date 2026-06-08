@@ -1,0 +1,5 @@
+FROM apache/airflow:3.0.0-python3.12
+
+RUN pip install apache-airflow-providers-docker \
+--constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.0.0/constraints-3.12.txt"
+

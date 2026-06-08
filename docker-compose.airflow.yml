@@ -1,0 +1,23 @@
+services:
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    command: airflow standalone
+    volumes:
+       - ./dags:/opt/airflow/dags
+       - ./data:/opt/airflow/data
+       - airflow_home:/opt/airflow
+       - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+
+    user: "0:0"
+
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_HOME: /opt/airflow
+      HOST_DATA_DIR: "${PWD}/data"
+
+volumes:
+  airflow_home:
