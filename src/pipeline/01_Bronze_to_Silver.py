@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from config import RAW_DATA_DIR, OUTPUT_DIR_SILVER
 from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
