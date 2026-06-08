@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 LABEL authors="darius"
 
-# PySpark requires a JVM — install OpenJDK 17 (headless = no GUI, smaller)
+# PySpark requires a JVM — install OpenJDK 21 (headless = no GUI, smaller)
 # Done BEFORE pip install so this heavy layer is cached independently
 RUN apt-get update && \
     apt-get install -y --no-install-recommends openjdk-21-jre-headless && \
@@ -17,4 +17,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 
-CMD ["python", "src/imobiliare_scraper.py"]
+CMD ["python", "src/ingestion/imobiliare_scraper.py"]

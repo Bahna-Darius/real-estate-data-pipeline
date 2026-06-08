@@ -1,11 +1,14 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from config import (
     BASE_URL, HEADERS, NUM_PAGES_TO_SCRAPE, RAW_DATA_DIR,
     RAW_CSV_PATH, RAW_JSON_PATH
 )
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
-from bs4 import Tag
 import pandas as pd
 import requests
 import logging

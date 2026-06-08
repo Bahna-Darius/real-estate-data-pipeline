@@ -51,7 +51,7 @@
 │  │  · City_Sector extracted (regex)             │   │
 │  │  · Neighborhood cleaned                      │   │
 │  │                                              │   │
-│  │  Output → data/silver/  (Parquet)            │   │
+│  │  Output → data/silver_storia/  (Parquet)            │   │
 │  └──────────────────────┬───────────────────────┘   │
 │                         │ shared volume               │
 │  ┌──────────────────────▼───────────────────────┐   │
@@ -195,16 +195,18 @@ real-estate-data-pipeline/
 ├── .github/
 │   └── workflows/                  # CI/CD — GitHub Actions (coming soon)
 ├── src/
-│   ├── imobiliare_scraper.py       # Bronze: scrape, parse & local upsert
-│   ├── 01_Bronze_to_Silver.py      # Silver: PySpark type-cast & location enrichment
-│   ├── 02_Silver_to_Gold.py        # Gold:   PySpark SQL aggregations
-│   ├── transformations.py          # Pure-Python helpers (used by tests)
-│   ├── azure_uploader.py           # Cloud mode: upload Bronze data to Azure Blob
-│   ├── config.py                   # Centralized paths & constants
-│   └── utils/
-│       └── fix_null_rooms.py       # One-off null repair utility
+│   ├── ingestion/
+│   │   └── imobiliare_scraper.py   # Bronze: scrape, parse & local upsert
+│   ├── pipeline/
+│   │   ├── 01_Bronze_to_Silver.py  # Silver: PySpark type-cast & location enrichment
+│   │   └── 02_Silver_to_Gold.py    # Gold:   PySpark SQL aggregations
+│   ├── cloud/
+│   │   └── azure_uploader.py       # Cloud mode: upload Bronze data to Azure Blob
+│   ├── utils/
+│   │   └── fix_null_rooms.py       # One-off null repair utility
+│   └── config.py                   # Centralized paths & constants
 ├── tests/
-│   └── test_transformations.py     # Unit tests — pytest, no Spark required
+│   └── test_silver_pipeline.py     # Integration tests — pytest with real SparkSession
 ├── databricks_notebooks/           # Reference: original Databricks implementation
 │   ├── 01_Bronze_to_Silver.ipynb
 │   └── 02_Silver_to_Gold.ipynb
@@ -247,7 +249,7 @@ docker compose build
 # Stage 1 — Scrape Bronze layer (storia.ro → data/raw/)
 docker compose run scraper
 
-# Stage 2 — Transform to Silver (raw JSON → data/silver/ Parquet)
+# Stage 2 — Transform to Silver (raw JSON → data/silver_storia/ Parquet)
 docker compose run transform
 
 # Stage 3 — Aggregate to Gold (Silver → data/gold/ Parquet + CSV)
@@ -261,9 +263,9 @@ All output lands in `./data/` on your local machine via the shared Docker volume
 ```bash
 pip install -r requirements.txt
 
-python src/imobiliare_scraper.py
-python src/01_Bronze_to_Silver.py
-python src/02_Silver_to_Gold.py
+python src/ingestion/imobiliare_scraper.py
+python src/pipeline/01_Bronze_to_Silver.py
+python src/pipeline/02_Silver_to_Gold.py
 ```
 
 ---
@@ -302,5 +304,5 @@ Silver is consumed programmatically — Parquet's columnar compression makes it 
 - [x] Robust rooms extraction with 3-level fallback
 - [x] 📊 Streamlit dashboard — price trends, sector breakdown, room distribution
 - [x] 🧪 Unit tests with `pytest` — transformation helpers, parametrized, no Spark required
-- [ ] ⚙️ GitHub Actions CI/CD — automated test runs on push
+- [x] ⚙️ GitHub Actions CI/CD — automated test runs on push
 - [ ] 🌀 Apache Airflow DAG for scheduled pipeline orchestration

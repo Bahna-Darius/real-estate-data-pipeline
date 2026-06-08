@@ -18,7 +18,10 @@ from pyspark.sql.types import StructType, StructField, StringType
 import sys
 import importlib
 from pathlib import Path
+
+# src/ on path for config.py; src/pipeline/ for the script itself
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "pipeline"))
 
 # File starts with a digit — standard import syntax won't work
 _module = importlib.import_module("01_Bronze_to_Silver")

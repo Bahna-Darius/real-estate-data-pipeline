@@ -1,5 +1,9 @@
 import os
+import sys
 import logging
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient
 from config import AZURE_CONTAINER_NAME, BLOB_NAME, RAW_JSON_PATH
