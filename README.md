@@ -4,14 +4,22 @@
   <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/PySpark-Local_Mode-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white"/>
   <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Delta_Lake-Parquet-003366?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/Storage-Parquet-003366?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Architecture-Medallion-gold?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge"/>
 </p>
 
 <p align="center">
-  A fully containerized, end-to-end data engineering pipeline that scrapes <strong>3,700+ real estate listings</strong> from the Romanian property market (Bucharest), processes them through a <strong>Medallion Architecture</strong> (Bronze → Silver → Gold) using <strong>PySpark in local mode</strong>, and produces analytics-ready aggregations — all runnable with a single Docker command.
+  A fully containerized, end-to-end data engineering pipeline that scrapes <strong>11,000+ real estate listings</strong> from the Romanian property market (Bucharest), processes them through a <strong>Medallion Architecture</strong> (Bronze → Silver → Gold) using <strong>PySpark in local mode</strong>, and produces analytics-ready aggregations — all runnable with a single Docker command.
 </p>
+
+---
+
+## 📊 Dashboard Preview
+
+![Dashboard Full](images/dashboard_full.png)
+
+> Interactive Streamlit dashboard — KPI cards, top neighborhoods by price per m², room distribution, and Top 10 most expensive / most affordable neighborhoods.
 
 ---
 
@@ -80,6 +88,11 @@
 | **Silver / Gold** | PySpark `local[*]` | Type casting, enrichment, SQL aggregations |
 | **Output format** | Parquet (Silver/Gold) + CSV (Gold) | Columnar storage + human-readable export |
 | **Containerization** | Docker + Docker Compose | Reproducible pipeline — zero local setup |
+| **Orchestration** | Apache Airflow 3.0 + DockerOperator | DAG-based scheduling with task dependencies |
+| **Automation** | Bash + Linux cron | Daily unattended pipeline execution |
+| **Visualization** | Streamlit + Plotly | Interactive analytics dashboard |
+| **Testing** | pytest + PySpark integration tests | 8 tests covering all Silver transformations |
+| **CI/CD** | GitHub Actions | Automated test runs on every push |
 | **Config & Secrets** | `python-dotenv` | Environment variable management |
 | **Language** | Python 3.12 | Pipeline orchestration |
 
@@ -149,28 +162,15 @@ PySpark script running in `local[*]` mode — uses all available CPU cores on th
 
 ### 🥇 Gold — Business Aggregations (`02_Silver_to_Gold.py`)
 
-PySpark SQL aggregation layer — mirrors the logic from the original Databricks notebook:
+PySpark SQL aggregation layer producing three independent analytical tables:
 
-```python
-df_gold = (
-    df_silver
-    .filter(col("Neighborhood").isNotNull())
-    .groupBy(
-        coalesce(col("City_Sector"), lit("Ilfov / Necunoscut")).alias("Sector"),
-        col("Neighborhood").alias("Cartier")
-    )
-    .agg(
-        count("listing_id")               .alias("Numar_Anunturi"),
-        round(avg("Price_EUR"), 0)         .alias("Pret_Mediu_Total_EUR"),
-        round(avg("Price_per_sqm"), 0)     .alias("Pret_Mediu_MP_EUR"),
-        round(avg("rooms"), 1)             .alias("Numar_Mediu_Camere"),
-    )
-    .filter(col("Numar_Anunturi") >= 2)
-    .orderBy(col("Pret_Mediu_MP_EUR").desc())
-)
-```
+| Table | Description | Filter |
+|-------|-------------|--------|
+| `by_neighborhood` | Avg price, avg €/m², listing count — grouped by sector + neighborhood | `≥ 2 listings`, ordered by €/m² desc |
+| `rooms_distribution` | Avg price and count per room type | All rooms, ordered ascending |
+| `market_summary` | Single-row global market snapshot — total listings, min/max/avg price | Full dataset |
 
-Output: **Parquet** (programmatic use) + **single CSV** (human-readable, ready for Excel / BI tools)
+Each table is saved as both **Parquet** (programmatic consumption) and a **single-file CSV** (ready for Excel / BI tools).
 
 ---
 
@@ -193,20 +193,23 @@ The **cloud mode** reflects the original production setup and requires an Azure 
 ```
 real-estate-data-pipeline/
 ├── .github/
-│   └── workflows/                  # CI/CD — GitHub Actions (coming soon)
+│   └── workflows/
+│       └── ci.yml                  # CI/CD — runs pytest on every push
 ├── src/
 │   ├── ingestion/
-│   │   └── imobiliare_scraper.py   # Bronze: scrape, parse & local upsert
+│   │   └── imobiliare_scraper.py   # Bronze: scrape, parse & incremental upsert
 │   ├── pipeline/
 │   │   ├── 01_Bronze_to_Silver.py  # Silver: PySpark type-cast & location enrichment
-│   │   └── 02_Silver_to_Gold.py    # Gold:   PySpark SQL aggregations
+│   │   └── 02_Silver_to_Gold.py    # Gold:   PySpark SQL aggregations (3 tables)
 │   ├── cloud/
 │   │   └── azure_uploader.py       # Cloud mode: upload Bronze data to Azure Blob
 │   ├── utils/
 │   │   └── fix_null_rooms.py       # One-off null repair utility
 │   └── config.py                   # Centralized paths & constants
 ├── tests/
-│   └── test_silver_pipeline.py     # Integration tests — pytest with real SparkSession
+│   └── test_silver_pipeline.py     # 8 integration tests — real SparkSession, no mocks
+├── dags/
+│   └── real_estate_dag.py          # Airflow DAG: scrape → silver → gold via DockerOperator
 ├── databricks_notebooks/           # Reference: original Databricks implementation
 │   ├── 01_Bronze_to_Silver.ipynb
 │   └── 02_Silver_to_Gold.ipynb
@@ -214,12 +217,15 @@ real-estate-data-pipeline/
 │   └── app.py                      # Streamlit dashboard — price analytics & charts
 ├── data/                           # Generated — gitignored
 │   ├── raw/                        # Bronze: JSON + CSV
-│   ├── silver/                     # Silver: Parquet
-│   └── gold/                       # Gold:   Parquet + CSV
+│   ├── silver_storia/              # Silver: Parquet
+│   └── gold/                       # Gold:   Parquet + CSV (3 tables)
 ├── conftest.py                     # pytest root configuration
+├── run_pipeline.sh                 # Bash runner — executes full pipeline, used by cron
 ├── .env.example                    # Environment variable template (safe to commit)
-├── Dockerfile                      # Python 3.12 + Java 21 + dependencies
+├── Dockerfile                      # Python 3.12 + Java 21 + PySpark dependencies
+├── Dockerfile.airflow              # Airflow 3.0 image with DockerOperator provider
 ├── docker-compose.yml              # Three-stage pipeline: scraper → transform → gold
+├── docker-compose.airflow.yml      # Airflow standalone stack with Docker socket access
 ├── requirements.txt
 └── README.md
 ```
@@ -268,6 +274,27 @@ python src/pipeline/01_Bronze_to_Silver.py
 python src/pipeline/02_Silver_to_Gold.py
 ```
 
+### 5. Automated daily runs (Linux cron)
+
+`run_pipeline.sh` orchestrates all three stages and writes timestamped logs to `logs/`.
+To schedule it daily at 14:00, add this entry via `crontab -e`:
+
+```
+0 14 * * * /path/to/real-estate-data-pipeline/run_pipeline.sh
+```
+
+Each stage runs in an isolated container that is automatically removed on completion (`--rm`),
+leaving zero background processes between runs.
+
+### 6. Launch the Streamlit dashboard
+
+```bash
+pip install -r requirements.txt
+streamlit run dashboards/app.py
+```
+
+Requires Gold data to be present in `data/gold/`. Run the pipeline at least once first.
+
 ---
 
 ## 🧠 Key Engineering Decisions
@@ -303,6 +330,7 @@ Silver is consumed programmatically — Parquet's columnar compression makes it 
 - [x] Docker + Docker Compose — fully containerized, zero-setup pipeline
 - [x] Robust rooms extraction with 3-level fallback
 - [x] 📊 Streamlit dashboard — price trends, sector breakdown, room distribution
-- [x] 🧪 Unit tests with `pytest` — transformation helpers, parametrized, no Spark required
+- [x] 🧪 pytest integration tests — 8 tests, real SparkSession, zero mocks
 - [x] ⚙️ GitHub Actions CI/CD — automated test runs on push
-- [ ] 🌀 Apache Airflow DAG for scheduled pipeline orchestration
+- [x] 🌀 Apache Airflow DAG — DockerOperator, scrape → silver → gold task chain
+- [x] ⏰ Automated daily runs — Bash runner + Linux cron, self-cleaning containers

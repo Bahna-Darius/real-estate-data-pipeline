@@ -45,22 +45,22 @@ df_neighborhood, df_rooms, df_summary = load_data()
 SECTORS = sorted(df_neighborhood["Sector"].dropna().unique())
 
 # ---------------------------------------------------------------------------
-# Sidebar — filtre
+# Sidebar — filters
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("🏠 Filtre")
+    st.title("🏠 Filters")
     st.markdown("---")
 
     selected_sectors = st.multiselect(
         "Sector",
         options=SECTORS,
         default=SECTORS,
-        help="Selectează unul sau mai multe sectoare",
+        help="Select one or more city sectors",
     )
 
     top_n = st.slider(
-        "Număr cartiere afișate",
+        "Neighborhoods displayed",
         min_value=5,
         max_value=40,
         value=20,
@@ -68,13 +68,13 @@ with st.sidebar:
     )
 
     metric = st.radio(
-        "Metrica principală",
+        "Primary metric",
         options=["Pret_Mediu_MP_EUR", "Pret_Mediu_EUR"],
-        format_func=lambda x: "Preț mediu €/mp" if x == "Pret_Mediu_MP_EUR" else "Preț mediu total €",
+        format_func=lambda x: "Avg price €/sqm" if x == "Pret_Mediu_MP_EUR" else "Avg total price €",
     )
 
     st.markdown("---")
-    st.caption("Date: storia.ro · București")
+    st.caption("Source: storia.ro · Bucharest")
 
 # ---------------------------------------------------------------------------
 # Filter data
@@ -87,7 +87,7 @@ df_filtered = df_neighborhood[df_neighborhood["Sector"].isin(selected_sectors)]
 # ---------------------------------------------------------------------------
 
 st.title("Romanian Real Estate Dashboard")
-st.caption(f"Afișând **{len(df_filtered)}** cartiere din **{len(selected_sectors)}** sectoare selectate")
+st.caption(f"Showing **{len(df_filtered)}** neighborhoods across **{len(selected_sectors)}** selected sectors")
 
 st.markdown("---")
 
@@ -98,37 +98,37 @@ st.markdown("---")
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
-    "Total anunțuri",
+    "Total listings",
     f"{int(df_summary['Total_Anunturi'].iloc[0]):,}",
-    help="Numărul total de anunțuri scrapat din storia.ro",
+    help="Total number of listings scraped from storia.ro",
 )
 col2.metric(
-    "Preț mediu apartament",
+    "Avg apartment price",
     f"€ {int(df_summary['Pret_Mediu_EUR'].iloc[0]):,}",
-    help="Media prețurilor de vânzare pe toată piața",
+    help="Average asking price across the entire market",
 )
 col3.metric(
-    "Preț mediu pe mp",
-    f"€ {int(df_summary['Pret_Mediu_MP_EUR'].iloc[0]):,} /mp",
-    help="Prețul mediu per metru pătrat pe toată piața",
+    "Avg price per sqm",
+    f"€ {int(df_summary['Pret_Mediu_MP_EUR'].iloc[0]):,} /sqm",
+    help="Average price per square meter across the entire market",
 )
 col4.metric(
-    "Preț maxim înregistrat",
+    "Highest recorded price",
     f"€ {int(df_summary['Pret_Max_EUR'].iloc[0]):,}",
-    help="Cel mai scump anunț din setul de date",
+    help="Most expensive listing in the dataset",
 )
 
 st.markdown("---")
 
 # ---------------------------------------------------------------------------
-# Row 1 — Bar chart cartiere + Distribuție camere
+# Row 1 — Neighborhood bar chart + Room distribution
 # ---------------------------------------------------------------------------
 
 col_left, col_right = st.columns([3, 2])
 
 with col_left:
-    label = "Preț mediu €/mp" if metric == "Pret_Mediu_MP_EUR" else "Preț mediu total €"
-    st.subheader(f"Top {top_n} cartiere — {label}")
+    label = "Avg price €/sqm" if metric == "Pret_Mediu_MP_EUR" else "Avg total price €"
+    st.subheader(f"Top {top_n} Neighborhoods — {label}")
 
     chart_df = (
         df_filtered
@@ -152,10 +152,10 @@ with col_left:
         },
         labels={
             metric: label,
-            "Neighborhood": "Cartier",
-            "Numar_Anunturi": "Nr. anunțuri",
-            "Pret_Mediu_MP_EUR": "€/mp",
-            "Pret_Mediu_EUR": "Preț mediu €",
+            "Neighborhood": "Neighborhood",
+            "Numar_Anunturi": "# Listings",
+            "Pret_Mediu_MP_EUR": "€/sqm",
+            "Pret_Mediu_EUR": "Avg price €",
         },
     )
     x_dtick = 200_000 if metric == "Pret_Mediu_EUR" else 1_000
@@ -176,7 +176,7 @@ with col_left:
     st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
-    st.subheader("Distribuție număr camere")
+    st.subheader("Room Distribution")
 
     rooms_df = df_rooms.sort_values("Numar_Camere").copy()
     rooms_df["Numar_Camere"] = rooms_df["Numar_Camere"].astype(str) + " cam."
@@ -194,16 +194,16 @@ with col_right:
             "Numar_Camere": True,
         },
         labels={
-            "Numar_Camere": "Camere",
-            "Numar_Anunturi": "Nr. anunțuri",
-            "Pret_Mediu_EUR": "Preț mediu €",
+            "Numar_Camere": "Rooms",
+            "Numar_Anunturi": "# Listings",
+            "Pret_Mediu_EUR": "Avg price €",
         },
     )
     fig2.update_traces(textposition="outside")
     fig2.update_layout(
         coloraxis_showscale=False,
-        xaxis_title="Număr camere",
-        yaxis_title="Anunțuri",
+        xaxis_title="Number of rooms",
+        yaxis_title="Listings",
         height=420,
         margin=dict(l=0, r=20, t=20, b=40),
         plot_bgcolor="rgba(0,0,0,0)",
@@ -221,11 +221,11 @@ st.markdown("---")
 col_t1, col_t2 = st.columns(2)
 
 COLS_DISPLAY = ["Sector", "Neighborhood", "Numar_Anunturi", "Pret_Mediu_MP_EUR", "Pret_Mediu_EUR"]
-COL_RENAME   = {
-    "Neighborhood":    "Cartier",
-    "Numar_Anunturi":  "Anunțuri",
-    "Pret_Mediu_MP_EUR": "€/mp",
-    "Pret_Mediu_EUR":  "Preț mediu €",
+COL_RENAME = {
+    "Neighborhood":      "Neighborhood",
+    "Numar_Anunturi":    "Listings",
+    "Pret_Mediu_MP_EUR": "€/sqm",
+    "Pret_Mediu_EUR":    "Avg price €",
 }
 
 def format_table(df_in, ascending):
@@ -237,14 +237,14 @@ def format_table(df_in, ascending):
         .reset_index(drop=True)
     )
     df_out.index += 1
-    df_out["€/mp"]        = df_out["€/mp"].apply(lambda v: f"€ {v:,.0f}")
-    df_out["Preț mediu €"] = df_out["Preț mediu €"].apply(lambda v: f"€ {v:,.0f}")
+    df_out["€/sqm"]       = df_out["€/sqm"].apply(lambda v: f"€ {v:,.0f}")
+    df_out["Avg price €"] = df_out["Avg price €"].apply(lambda v: f"€ {v:,.0f}")
     return df_out
 
 with col_t1:
-    st.subheader("🏆 Top 10 cele mai scumpe cartiere")
+    st.subheader("🏆 Top 10 Most Expensive Neighborhoods")
     st.dataframe(format_table(df_filtered, ascending=False), use_container_width=True)
 
 with col_t2:
-    st.subheader("💰 Top 10 cele mai accesibile cartiere")
+    st.subheader("💰 Top 10 Most Affordable Neighborhoods")
     st.dataframe(format_table(df_filtered, ascending=True), use_container_width=True)

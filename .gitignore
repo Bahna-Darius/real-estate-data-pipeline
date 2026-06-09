@@ -218,3 +218,6 @@ metastore_db/
 # Local planning & notes (not for repo)
 ROADMAP_PERSONAL.md
 CLAUDE_SESSION.md
+
+# Pipeline logs (generated locally, not committed)
+logs/

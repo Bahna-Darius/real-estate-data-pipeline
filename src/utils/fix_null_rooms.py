@@ -6,12 +6,18 @@ For each null-rooms record:
   - If 410 Gone (expired listing) → removes from DB
   - Saves updated JSON + CSV
 """
-import os, sys, json, time, random, logging
+import sys
+import json
+import time
+import random
+import logging
+from pathlib import Path
+
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import HEADERS, RAW_JSON_PATH, RAW_CSV_PATH
 
 logging.basicConfig(
