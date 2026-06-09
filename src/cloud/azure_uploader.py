@@ -63,7 +63,7 @@ def upload_to_azure_blob(file_path: str, container_name: str, blob_name: str) ->
 
         logger.info(f"Uploading data to Azure as '{blob_name}'...")
 
-        # Open the local CSV file and stream the upload
+        # Open the local file in binary mode and stream the upload
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=True)
 
