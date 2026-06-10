@@ -18,6 +18,7 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_HOME: /opt/airflow
       HOST_DATA_DIR: "${PWD}/data"
+      AIRFLOW__SIMPLE_AUTH_MANAGER__PASSWORDS: "admin=admin"
 
 volumes:
   airflow_home:
