@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
 from config import (
     AZURE_BRONZE_CONTAINER_NAME, BLOB_NAME, RAW_JSON_PATH, AZURE_SILVER_CONTAINER_NAME,
     AZURE_GOLD_CONTAINER_NAME, OUTPUT_DIR_SILVER, OUTPUT_DIR_GOLD
@@ -57,7 +58,7 @@ def upload_file_to_azure_blob(file_path: str, container_name: str, blob_name: st
         # Check if the container exists; create it if it doesn't
         try:
             container_client.get_container_properties()
-        except Exception:
+        except ResourceNotFoundError:
             logger.info(f"Container '{container_name}' not found. Creating it automatically...")
             container_client.create_container()
 
@@ -101,7 +102,7 @@ def upload_folder_to_azure(local_folder: str, container_name: str) -> None:
 
         try:
             container_client.get_container_properties()
-        except Exception:
+        except ResourceNotFoundError:
             logger.info(f"Container '{container_name}' not found. Creating it automatically...")
             container_client.create_container()
 

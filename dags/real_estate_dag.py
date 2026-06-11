@@ -11,7 +11,10 @@ from docker.types import Mount
 
 DAG_DIR      = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(DAG_DIR)
-DATA_DIR     = os.environ["HOST_DATA_DIR"]
+DATA_DIR     = os.environ.get(
+    key="HOST_DATA_DIR",
+    default="/opt/airflow/data"
+)
 
 # ---------------------------------------------------------------------------
 # Shared config

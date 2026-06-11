@@ -3,12 +3,15 @@ import glob
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from pathlib import Path
 
 st.set_page_config(
     page_title="Romanian Real Estate Dashboard",
     page_icon="🏠",
     layout="wide",
 )
+
+DATA_DIR = Path(__file__).parent.parent / "data" / "gold"
 
 # ---------------------------------------------------------------------------
 # Styling
@@ -33,11 +36,14 @@ st.markdown("""
 def load_data():
     def read_gold(pattern):
         files = glob.glob(pattern)
+        if not files:
+            st.error(f"Gold data empty! Rerun pipeline again!")
+            st.stop()
         return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
 
-    df_n = read_gold("data/gold/by_neighborhood_csv/part-*.csv")
-    df_r = read_gold("data/gold/rooms_distribution_csv/part-*.csv")
-    df_s = read_gold("data/gold/market_summary_csv/part-*.csv")
+    df_n = read_gold(str(DATA_DIR / "by_neighborhood_csv" / "part-*.csv"))
+    df_r = read_gold(str(DATA_DIR / "rooms_distribution_csv" / "part-*.csv"))
+    df_s = read_gold(str(DATA_DIR / "market_summary_csv" / "part-*.csv"))
     return df_n, df_r, df_s
 
 df_neighborhood, df_rooms, df_summary = load_data()
