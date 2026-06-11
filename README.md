@@ -35,7 +35,7 @@
       │  HTTP GET · BeautifulSoup · __NEXT_DATA__ parsing
       ▼
 ┌─────────────────────────────────────────────────────┐
-│               🐳 Docker Compose                      │
+│               🐳 Docker Compose                     │
 │                                                     │
 │  ┌──────────────────────────────────────────────┐   │
 │  │          🥉 scraper service                  │   │
@@ -48,9 +48,9 @@
 │  │                                              │   │
 │  │  Output → data/raw/storia_raw_data.json      │   │
 │  └──────────────────────┬───────────────────────┘   │
-│                         │ shared volume               │
+│                         │ shared volume             │
 │  ┌──────────────────────▼───────────────────────┐   │
-│  │          🥈 transform service  (PySpark)      │   │
+│  │          🥈 transform service  (PySpark)     │   │
 │  │                                              │   │
 │  │  · Price  → Price_EUR (INT)                  │   │
 │  │  · Area   → Area_sqm  (DOUBLE)               │   │
@@ -59,11 +59,11 @@
 │  │  · City_Sector extracted (regex)             │   │
 │  │  · Neighborhood cleaned                      │   │
 │  │                                              │   │
-│  │  Output → data/silver_storia/  (Parquet)            │   │
+│  │  Output → data/silver_storia/  (Parquet)     │   │
 │  └──────────────────────┬───────────────────────┘   │
-│                         │ shared volume               │
+│                         │ shared volume             │
 │  ┌──────────────────────▼───────────────────────┐   │
-│  │          🥇 gold service  (PySpark SQL)       │   │
+│  │          🥇 gold service  (PySpark SQL)      │   │
 │  │                                              │   │
 │  │  · Avg price by sector                       │   │
 │  │  · Avg €/m² by neighborhood                  │   │

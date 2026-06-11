@@ -39,7 +39,7 @@ def get_soup(url: str, headers: Dict[str, str]) -> Optional[BeautifulSoup]:
         response.raise_for_status()
         return BeautifulSoup(response.text, 'html.parser')
     except requests.exceptions.RequestException as e:
-        logging.error(f"[-] Request failed for {url}: {e}")
+        logger.error(f"[-] Request failed for {url}: {e}")
         return None
 
 
@@ -208,7 +208,7 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
     Saves the scraped data to CSV and JSON formats using an incremental load (upsert).
     """
     if not scraped_data:
-        logging.info("[-] No data to save.")
+        logger.info("[-] No data to save.")
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -218,7 +218,7 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
     new_df = pd.DataFrame(scraped_data)
 
     if os.path.exists(csv_filename):
-        logging.info(f"[*] Existing database found! Performing Incremental Load...")
+        logger.info(f"[*] Existing database found! Performing Incremental Load...")
         # PRODUCTION FIX: Added keep_default_na=False to prevent Pandas
         # from automatically converting "N/A" strings into NaN (null) values.
         existing_df = pd.read_csv(csv_filename, keep_default_na=False)
@@ -229,12 +229,12 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
         new_listings_count = len(final_df) - len(existing_df)
 
         if new_listings_count > 0:
-            logging.info(f"[+] Added {new_listings_count} NEW listings to the database.")
+            logger.info(f"[+] Added {new_listings_count} NEW listings to the database.")
         else:
-            logging.info("[*] Run complete. No new unique listings found.")
+            logger.info("[*] Run complete. No new unique listings found.")
 
     else:
-        logging.info(f"[*] No existing database found. Creating first full load...")
+        logger.info(f"[*] No existing database found. Creating first full load...")
         final_df = new_df
 
     # CSV FILE
@@ -245,7 +245,7 @@ def save_data(scraped_data: List[Dict[str, str]], output_dir: str) -> None:
     final_df.replace("", "N/A", inplace=True)
     final_df.to_json(json_filename, orient="records", force_ascii=False, indent=4)
 
-    logging.info(f"[+] Success! Database now contains {len(final_df)} total records.")
+    logger.info(f"[+] Success! Database now contains {len(final_df)} total records.")
 
 
 def main() -> None:
@@ -255,29 +255,29 @@ def main() -> None:
     scraped_data: List[Dict[str, str]] = []
     num_pages = NUM_PAGES_TO_SCRAPE
 
-    logging.info(f"[*] Starting scraper for {num_pages} pages...")
+    logger.info(f"[*] Starting scraper for {num_pages} pages...")
 
     for page in range(1, num_pages + 1):
         url = f"{BASE_URL}?page={page}"
 
-        logging.info(f"[*] Scraping Page {page}: {url}")
+        logger.info(f"[*] Scraping Page {page}: {url}")
 
         # 1. Fetch HTML
         soup = get_soup(url, HEADERS)
         if not soup:
-            logging.error(f"[-] Skipping page {page} due to fetch error.")
+            logger.error(f"[-] Skipping page {page} due to fetch error.")
             continue
 
         listings = soup.find_all("article")
-        logging.info(f"[+] Found {len(listings)} listings on page {page}.")
+        logger.info(f"[+] Found {len(listings)} listings on page {page}.")
 
         if not listings:
-            logging.warning("[-] No listings found on this page. Stopping pagination.")
+            logger.warning("[-] No listings found on this page. Stopping pagination.")
             break
 
         # 2. Build __NEXT_DATA__ rooms lookup for this page, then extract per listing
         rooms_lookup = extract_nextdata_rooms(soup)
-        logging.info(f"[*] __NEXT_DATA__ rooms lookup: {len(rooms_lookup)} entries found.")
+        logger.info(f"[*] __NEXT_DATA__ rooms lookup: {len(rooms_lookup)} entries found.")
 
         for listing in listings:
             listing_dict = parse_listing(listing, rooms_lookup)
@@ -286,15 +286,15 @@ def main() -> None:
         # 3. Polite Delay
         if page < num_pages:
             sleep_time = random.uniform(2.0, 4.0)
-            logging.info(f"[*] Sleeping for {sleep_time:.2f} seconds to be polite...")
+            logger.info(f"[*] Sleeping for {sleep_time:.2f} seconds to be polite...")
             time.sleep(sleep_time)
 
     # 4. Save Data
     if scraped_data:
-        logging.info("--- Saving All Data ---")
+        logger.info("--- Saving All Data ---")
         save_data(scraped_data, RAW_DATA_DIR)
     else:
-        logging.warning("[-] No data was scraped at all.")
+        logger.warning("[-] No data was scraped at all.")
 
 
 if __name__ == "__main__":
